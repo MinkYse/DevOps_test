@@ -31,5 +31,5 @@ sudo apt install ansible
 ### Запуск
 Запускаем playbook
 ```sh
-ansible-playbook main.yaml
+sudo ansible-playbook main.yaml
 ```

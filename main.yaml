@@ -51,6 +51,13 @@
         state: present
         regexp: '^#?PasswordAuthentication'
         line: 'PasswordAuthentication no'
+      notify:
+        - restart ssh
+
+
+  handlers:
+    - name: restart ssh
+      service: name=ssh state=restarted
 
 - name: Install and configure Postgres
   hosts: B
@@ -236,6 +243,8 @@
         state: present
         regexp: '^#?PasswordAuthentication'
         line: 'PasswordAuthentication no'
+      notify:
+        - restart ssh
 
     - name: Test cast to the db
       shell: "PGPASSWORD={{ db_password }} psql -Udeveloper -h95.163.235.123 -dmyapp -c 'SELECT usename, usesuper, usecreatedb FROM pg_catalog.pg_user'"
@@ -244,3 +253,7 @@
     - name: Result - all users
       debug:
         msg: "{{ result.stdout_lines }}"
+
+  handlers:
+    - name: restart ssh
+      service: name=ssh state=restarted
