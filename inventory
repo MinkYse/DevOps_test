@@ -1,2 +1,2 @@
-B ansible_host=CHANGE_ME ansible_ssh_pass=CHANGE_ME
-C ansible_host=CHANGE_ME ansible_ssh_pass=CHANGE_ME
+B ansible_host=CHANGE_ME ansible_ssh_pass=CHANGE_ME ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+C ansible_host=CHANGE_ME ansible_ssh_pass=CHANGE_ME ansible_ssh_common_args='-o StrictHostKeyChecking=no'

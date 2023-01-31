@@ -138,7 +138,7 @@
 
     - name: Alter defaoult priveleges on db1
       postgresql_privs:
-        db: nyapp
+        db: myapp
         objs: TABLES
         privs: SELECT,INSERT
         type: default_privs
@@ -148,7 +148,7 @@
 
     - name: Alter defaoult priveleges on db1, step 2
       postgresql_privs:
-        db: nyapp
+        db: myapp
         objs: TYPES
         privs: USAGE
         type: default_privs
@@ -167,7 +167,7 @@
 
     - name: Alter defaoult priveleges on db2
       postgresql_privs:
-        db: nyauth
+        db: myauth
         objs: TABLES
         privs: SELECT
         type: default_privs
