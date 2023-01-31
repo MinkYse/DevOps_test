@@ -1,0 +1,246 @@
+---
+- name: Server A setup
+  hosts: localhost
+  connection: local
+  tasks:
+
+    - name: Generate SSH key"
+      openssh_keypair:
+        path: ~/.ssh/id_rsa
+        type: rsa
+        size: 4096
+        state: present
+        force: no
+
+    - name: Update apt and install sshpass
+      apt:
+        pkg:
+          - sshpass
+        state: latest
+        update_cache: true
+
+- name: Server B setup
+  hosts: B
+  become: true
+  vars:
+    created_username: DevOps
+
+  tasks:
+    - name: Create DevOps user
+      user:
+        name: "{{ created_username }}"
+        state: present
+        groups: sudo
+        append: true
+        create_home: true
+
+    - name: Add DevOps user to the sudoers
+      copy:
+        dest: "/etc/sudoers.d/DevOps"
+        content: "devops  ALL=(ALL)  NOPASSWD: ALL"
+
+    - name: Set authorized key for remote user
+      ansible.posix.authorized_key:
+        user: "{{ created_username }}"
+        state: present
+        key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_rsa.pub') }}"
+
+    - name: Disable password authentification
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        state: present
+        regexp: '^#?PasswordAuthentication'
+        line: 'PasswordAuthentication no'
+
+- name: Install and configure Postgres
+  hosts: B
+  become: yes
+
+  vars_files:
+    - vars.yaml
+
+  pre_tasks:
+    - name: Update apt and install packages
+      apt:
+        pkg:
+          - postgresql
+          - postgresql-contrib
+          - python3-pip
+        state: latest
+        update_cache: true
+
+    - name: Install Python packages
+      pip:
+        name: psycopg2-binary
+
+  tasks:
+    - name: Start and enable posgresql
+      service: "name={{ item }} state=started enabled=yes"
+      with_items:
+        - postgresql
+
+    - name: Create db1
+      postgresql_db:
+        state: present
+        name: myapp
+      become: yes
+      become_user: postgres
+
+    - name: Create db2
+      postgresql_db:
+        state: present
+        name: myauth
+      become: yes
+      become_user: postgres
+
+
+    - name: Create db user
+      postgresql_user:
+        state: present
+        name: "{{ db_user }}"
+        password: "{{ db_password }}"
+      become: yes
+      become_user: postgres
+
+    - name: REVOKE CREATE for public
+      postgresql_privs:
+        type: schema
+        database: myapp
+        roles: PUBLIC
+        grant_option: no
+        privs: CREATE
+        state: absent
+        objs: public
+      become: yes
+      become_user: postgres
+
+    - name: REVOKE CREATE for public
+      postgresql_privs:
+        type: schema
+        database: myauth
+        roles: PUBLIC
+        grant_option: no
+        privs: CREATE
+        state: absent
+        objs: public
+      become: yes
+      become_user: postgres
+
+
+    - name: Modify user role
+      postgresql_privs:
+        db: myapp
+        role: "{{ db_user }}"
+        objs: ALL_IN_SCHEMA
+        privs: SELECT
+      become: yes
+      become_user: postgres
+
+    - name: Alter defaoult priveleges on db1
+      postgresql_privs:
+        db: nyapp
+        objs: TABLES
+        privs: SELECT,INSERT
+        type: default_privs
+        role: "{{ db_user }}"
+      become: yes
+      become_user: postgres
+
+    - name: Alter defaoult priveleges on db1, step 2
+      postgresql_privs:
+        db: nyapp
+        objs: TYPES
+        privs: USAGE
+        type: default_privs
+        role: "{{ db_user }}"
+      become: yes
+      become_user: postgres
+
+    - name: Modify user role for db2
+      postgresql_privs:
+        db: myauth
+        role: "{{ db_user }}"
+        objs: ALL_IN_SCHEMA
+        privs: SELECT
+      become: yes
+      become_user: postgres
+
+    - name: Alter defaoult priveleges on db2
+      postgresql_privs:
+        db: nyauth
+        objs: TABLES
+        privs: SELECT
+        type: default_privs
+        role: "{{ db_user }}"
+      become: yes
+      become_user: postgres
+
+    - name: Alter defaoult priveleges on db2, step 2
+      postgresql_privs:
+        db: myauth
+        objs: TYPES
+        privs: USAGE
+        type: default_privs
+        role: "{{ db_user }}"
+      become: yes
+      become_user: postgres
+
+    - name: Allow md5 connection for the db user
+      postgresql_pg_hba:
+        dest: /etc/postgresql/12/main/pg_hba.conf
+        contype: host
+        databases: myapp,myauth
+        method: md5
+        users: "{{ db_user }}"
+        source: "{{host_connection}}"
+        create: true
+      become: yes
+      become_user: postgres
+      notify: restart postgres
+
+    - name: Ensure PostgreSQL is listening for remote connections
+      lineinfile:
+        dest: /etc/postgresql/12/main/postgresql.conf
+        regexp: '^listen_addresses ='
+        line: listen_addresses = '*'
+      notify: restart postgres
+
+  handlers:
+    - name: restart postgres
+      service: name=postgresql state=restarted
+
+- name: Server C setup
+  hosts: C
+  become: true
+  vars_files:
+    - vars.yaml
+
+  tasks:
+
+    - name: Update apt and install posgresql-client
+      apt:
+        pkg:
+          - postgresql-client
+        state: latest
+        update_cache: true
+
+    - name: Set authorized key for remote user
+      ansible.posix.authorized_key:
+        user: root
+        state: present
+        key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_rsa.pub') }}"
+
+    - name: Disable password authentification
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        state: present
+        regexp: '^#?PasswordAuthentication'
+        line: 'PasswordAuthentication no'
+
+    - name: Test cast to the db
+      shell: "PGPASSWORD={{ db_password }} psql -Udeveloper -h95.163.235.123 -dmyapp -c 'SELECT usename, usesuper, usecreatedb FROM pg_catalog.pg_user'"
+      register: result
+
+    - name: Result - all users
+      debug:
+        msg: "{{ result.stdout_lines }}"
