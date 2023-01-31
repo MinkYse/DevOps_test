@@ -1,4 +1,4 @@
 ---
 db_user: developer
 db_password: test
-host_connection: 89.108.70.247
+host_connection: CHANGE_ME
